@@ -39,12 +39,15 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
 
 # nvcc on PATH (gsplat JIT-compiles its CUDA kernels), and pre-compile those
 # kernels now so pods skip the ~2-3 min compile. The build machine has no GPU,
-# so the target cards are listed explicitly: 8.0 A100, 8.6 A40/A5000/A6000/3090,
-# 8.9 L4/L40S/4090, 9.0 H100. Non-fatal: if it fails, pods compile as before.
+# so the targets are listed explicitly - every card cloud_train.py rents:
+# 8.6 A40/A5000/A6000/3090, 8.9 L4/L40S/4090 (+PTX for newer cards). Older cards:
+# cloud_train.py deletes this cache so gsplat recompiles. MAX_JOBS=2: compiling
+# with 4 parallel nvcc jobs ran the 16 GB build machine out of memory (exit 143).
+# Non-fatal: if it fails, pods compile as before.
 ENV CUDA_HOME=/usr/local/cuda \
     PATH=/usr/local/cuda/bin:$PATH \
-    TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
-RUN (python -c "from gsplat.cuda._backend import _C; print('gsplat kernels:', _C)" \
+    TORCH_CUDA_ARCH_LIST="8.6;8.9+PTX"
+RUN (MAX_JOBS=2 python -c "from gsplat.cuda._backend import _C; print('gsplat kernels:', _C)" \
      && ls -d /root/.cache/torch_extensions/*/gsplat_cuda) \
     || echo "!! gsplat pre-compile failed - pods will JIT-compile on first use"
 
