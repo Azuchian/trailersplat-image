@@ -17,15 +17,17 @@ RUN apt-get update -y \
 # global mapper. libfaiss 1.9.0 + openimageio 3.1 are pinned because the colmap
 # package forgets to declare them and newer faiss is ABI-incompatible
 # (verified 2026-09-30). The wrapper scopes conda's libraries to colmap only so
-# they never shadow torch's.
+# they never shadow torch's. The build machine has no GPU driver, so conda is told
+# to assume CUDA 12.9 (CONDA_OVERRIDE_CUDA); the pods check colmap really runs.
 RUN cd /root \
  && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xj bin/micromamba \
- && MAMBA_ROOT_PREFIX=/root/mamba ./bin/micromamba create -y -q -p /opt/cm -c conda-forge \
+ && CONDA_OVERRIDE_CUDA=12.9 MAMBA_ROOT_PREFIX=/root/mamba ./bin/micromamba create -y -p /opt/cm -c conda-forge \
       "colmap=4.0.4=*cuda*" "cuda-version=12.9" "libfaiss=1.9.0" "openimageio=3.1.*" \
  && rm -rf /root/mamba /root/bin \
  && printf '#!/bin/sh\nLD_LIBRARY_PATH=/opt/cm/lib exec /opt/cm/bin/colmap "$@"\n' > /usr/local/bin/colmap \
  && chmod +x /usr/local/bin/colmap \
- && colmap -h | grep -q "COLMAP 4"
+ && test -x /opt/cm/bin/colmap \
+ && (colmap -h | head -1 || echo "colmap -h needs a GPU driver here - checked on the pod instead")
 
 # nerfstudio, pinned to the version verified 2026-07..09. Bump deliberately.
 RUN python -m pip install --no-cache-dir --upgrade pip \
